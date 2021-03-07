@@ -26,9 +26,19 @@ c2::net::http_client::~http_client()
 
 bool c2::net::http_client::do_request_get(const http_get_context& context)
 {
-	parse_url(context.url);
-	resolve_domain(this->host);
-	//SOCKET sock = connect_to_host();
+	if (L"" == host || std::wstring::npos == context.url.find(host))
+	{
+		parse_url(context.url);
+	}
+
+	std::wstring ip;
+	resolve_domain(ip);
+
+	SOCKET sock = connect_to_host(ip);
+	if (INVALID_SOCKET == sock)
+	{
+		return false;
+	}
 
 	//send_to_host();
 	//recv_from_host();
@@ -41,9 +51,7 @@ bool c2::net::http_client::do_request_post(const http_post_context& context)
 	return false;
 }
 
-
-
-SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip, uint16_t port)
+SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip)
 {
 	SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (sock == INVALID_SOCKET)
@@ -54,7 +62,7 @@ SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip, uint16_t po
 	// bind address
 	SOCKADDR_IN sock_addr{};
 	sock_addr.sin_family = AF_INET;
-	sock_addr.sin_port = htons(port);
+	sock_addr.sin_port = htons(this->port);
 	InetPtonW(AF_INET, ip.c_str(), &sock_addr.sin_addr);
 
 
@@ -114,10 +122,10 @@ SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip, uint16_t po
 	// 다시 blocking socket 로 변경
 	// blocking send recv 를 위해 
 	enable_non_bloking_mode = false;
-	if (SOCKET_ERROR != ioctlsocket(sock, FIONBIO, &enable_non_bloking_mode))
+	if (SOCKET_ERROR == ioctlsocket(sock, FIONBIO, &enable_non_bloking_mode))
 	{
-		//printf("ioctlsocket failed with error: %ld\n", ret);
 		closesocket(sock);
+
 		return INVALID_SOCKET;
 	}
 
@@ -133,7 +141,7 @@ SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip, uint16_t po
 	return sock;
 }
 
-bool c2::net::http_client::resolve_domain(const std::wstring& ip)
+bool c2::net::http_client::resolve_domain(std::wstring& ip)
 {
 	addrinfoW hints{ AI_CANONNAME, PF_UNSPEC, SOCK_STREAM };
 	addrinfoW* result{};
@@ -145,18 +153,40 @@ bool c2::net::http_client::resolve_domain(const std::wstring& ip)
 	}
 	
 	void* ptr{};
-	switch (result->ai_family)
+	addrinfoW* addr_info{result};
+
+
+	while (nullptr != addr_info)// && result->ai_family != AF_INET)
+	{
+		if (AF_INET == addr_info->ai_family)
+		{
+			break;
+		}
+
+		addr_info = addr_info->ai_next;
+	}
+
+	if (AF_INET6 == addr_info->ai_family || nullptr == addr_info)
+	{
+		return false;
+	}
+
+	switch (addr_info->ai_family)
 	{
 	case AF_INET:
-		ptr = &((struct sockaddr_in*)result->ai_addr)->sin_addr;
+		ptr = &((struct sockaddr_in*)addr_info->ai_addr)->sin_addr;
 		break;
 	case AF_INET6:
-		ptr = &((struct sockaddr_in6*)result->ai_addr)->sin6_addr;
+		ptr = &((struct sockaddr_in6*)addr_info->ai_addr)->sin6_addr;
 		break;
+	default:
+		return false;
 	}
 
 	wchar_t buffer[1024]{};
-	InetNtopW(result->ai_family, ptr, buffer, sizeof(buffer) / sizeof(wchar_t));
+	InetNtopW(addr_info->ai_family, ptr, buffer, sizeof(buffer) / sizeof(wchar_t));
+
+	ip = buffer;
 
 	FreeAddrInfoW(result);
 
@@ -164,31 +194,30 @@ bool c2::net::http_client::resolve_domain(const std::wstring& ip)
 }
 
 
-
 bool c2::net::http_client::parse_url(const std::wstring& url)
 {
-	constexpr std::wstring_view c_protocol_https{ L"https://" };
-	constexpr std::wstring_view c_protocol_http{ L"http://" };
+	constexpr std::wstring_view PROTOCOL_HTTPS	{ L"https://" };
+	constexpr std::wstring_view PROTOCOL_HTTP	{ L"http://" };
 
+	uint16_t port		{ HTTP_WELL_KNOWN_PORT };
+	uint16_t protocol	{ HTTP_WELL_KNOWN_PORT };
 	std::wstring_view url_str{ url };
-	uint16_t port{ HTTP_WELL_KNOWN_PORT };
-	uint16_t protocol{ HTTP_WELL_KNOWN_PORT };
 
-	size_t pos = url_str.find(c_protocol_https); // 443
+	size_t pos = url_str.find(PROTOCOL_HTTPS); // 443
 	if (std::wstring_view::npos != pos)
 	{
 		port = HTTPS_WELL_KNOWN_PORT;
 
-		url_str.remove_prefix(c_protocol_https.length());
+		url_str.remove_prefix(PROTOCOL_HTTPS.length());
 	}
 	else
 	{
-		pos = url_str.find(c_protocol_http); // 443
+		pos = url_str.find(PROTOCOL_HTTP); // 443
 		if (std::wstring_view::npos != pos)
 		{
 			port = HTTP_WELL_KNOWN_PORT;
 
-			url_str.remove_prefix(c_protocol_http.length());
+			url_str.remove_prefix(PROTOCOL_HTTP.length());
 		}
 	}
 

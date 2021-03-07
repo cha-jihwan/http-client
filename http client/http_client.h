@@ -71,8 +71,8 @@ namespace c2::net
 
 	private:
 		bool	parse_url(const std::wstring& url);
-		bool	resolve_domain(const std::wstring& ip);
-		SOCKET	connect_to_host(const std::wstring& ip, uint16_t port);
+		bool	resolve_domain(std::wstring& ip);
+		SOCKET	connect_to_host(const std::wstring& ip);
 		bool	encode_utf16_to_utf8(std::wstring& msg);
 		bool	encode_utf8_to_utf16(std::wstring& msg);
 
