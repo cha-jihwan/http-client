@@ -41,3 +41,7 @@
 
 
 .vs/
+x64/
+*.pdb
+*.idb
+.vs/http client/v16/.suo

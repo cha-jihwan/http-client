@@ -89,16 +89,10 @@ SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip, uint16_t po
 			}
 			case WSAEWOULDBLOCK: // 연결중 time out 
 			{	// select로 연결 확인.
-				fd_set write_set;
-				fd_set except_set;
-
-				write_set.fd_count = 1;
-				write_set.fd_array[0] = sock;
-
-				except_set.fd_count = 1;
-				write_set.fd_array[0] = sock;
-
+				fd_set write_set{ 1, {sock} };
+				fd_set except_set{ 1, {sock} };
 				timeval time_val{ 3, 0 }; // 3초 대기
+
 				select(0, 0, &write_set, &except_set, &time_val);
 				if (write_set.fd_count == 0)
 				{
@@ -141,17 +135,10 @@ SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip, uint16_t po
 
 bool c2::net::http_client::resolve_domain(const std::wstring& ip)
 {
-	addrinfoW hints{};
-	addrinfoW* result;
+	addrinfoW hints{ AI_CANONNAME, PF_UNSPEC, SOCK_STREAM };
+	addrinfoW* result{};
 
-	hints.ai_family = PF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags |= AI_CANONNAME;
-
-	ADDRINFOW* addr_info_ptr;
-	SOCKADDR_IN* sock_addr_ptr;
-
-	int errcode = GetAddrInfoW(L"google.com", NULL, &hints, &result);
+	int errcode = GetAddrInfoW(host.c_str(), NULL, &hints, &result);
 	if (errcode != 0)
 	{
 		return false;
@@ -217,23 +204,21 @@ bool c2::net::http_client::parse_url(const std::wstring& url)
 	if (std::wstring_view::npos == server_name_end_pos) // / 없으면 끝.
 	{
 		host = url_str;
-
-		return true;
 	}
 	else
 	{
 		path = url_str.substr(server_name_end_pos + 1);
 		url_str.remove_suffix(url_str.size() - server_name_end_pos);
 		host = url_str;//.substr(0, server_name_end_pos);
-
 	}
+
+	this->path = path;
 
 	//// : 포트가 있는지...
 	size_t port_identifire_pos = host.find(L":");
 	if (std::wstring_view::npos == port_identifire_pos) // 없다면... PASS // 있다면 처리.
 	{
 		this->host = host;
-		this->path = path;
 		this->port = port;
 
 		return true;
@@ -241,13 +226,10 @@ bool c2::net::http_client::parse_url(const std::wstring& url)
 
 
 	std::wstring port_str(&host.data()[port_identifire_pos + 1], host.size() - port_identifire_pos - 1);
-
 	this->port = std::stoi(port_str);
-
-	host.remove_suffix(host.size() - port_identifire_pos);
+	host.remove_suffix(port_str.size());
 
 	this->host = host;
-	this->path = path;
 
 	return true;
 }
