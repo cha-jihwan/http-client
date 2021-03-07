@@ -38,3 +38,6 @@
 *.db-shm
 *.db-wal
 *.ipch
+
+
+.vs/
