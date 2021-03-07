@@ -40,8 +40,8 @@
 *.ipch
 
 
-.vs/
+vs/
 x64/
+x86/
 *.pdb
 *.idb
-.vs/http client/v16/.suo
