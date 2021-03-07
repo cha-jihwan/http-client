@@ -40,6 +40,13 @@ bool c2::net::http_client::do_request_get(const http_get_context& context)
 		return false;
 	}
 
+	// for testing....
+	char send_buffer[1024]{"zz test\r\n"};
+	send(sock, send_buffer, 1024, NULL);
+
+	char recv_buffer[1024]{};
+	recv(sock, recv_buffer, 1024, NULL);
+
 	//send_to_host();
 	//recv_from_host();
 
