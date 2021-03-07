@@ -1,22 +1,21 @@
 #include "http_client.h"
 #include <ws2tcpip.h>
-
-c2::net::http_client::http_client(const std::wstring& url)
+c2::net::http_client::http_client( const std::wstring& url )
 	:last_error{ e_http_client_error::hcem_err_none }
 {
-	//if (false == parse_url(url->c_str()))
-	//{
-	//	last_error = e_http_client_error::hcem_parsing_failure;
-	//	return;
-	//}
-
 	WSADATA wsa_data;
-	if (0 != WSAStartup(MAKEWORD(2, 2), &wsa_data))
+	if ( 0 != WSAStartup( MAKEWORD( 2, 2 ), &wsa_data ) )
 	{
 		int error_code = WSAGetLastError();
-		return;// -1;
+		return;
 	}
 
+
+	if ( false == parse_url( url.c_str() ) )
+	{
+		last_error = e_http_client_error::hcem_parsing_failure;
+		return;
+	}
 }
 
 c2::net::http_client::~http_client()
@@ -24,44 +23,53 @@ c2::net::http_client::~http_client()
 	WSACleanup();
 }
 
-bool c2::net::http_client::do_request_get(const http_get_context& context)
+bool c2::net::http_client::do_request_get( const http_get_context& context )
 {
-	if (L"" == host || std::wstring::npos == context.url.find(host))
+	if ( L"" == host || std::wstring::npos != context.url.find( host ) )
 	{
-		parse_url(context.url);
+		parse_url( context.url );
 	}
 
 	std::wstring ip;
-	resolve_domain(ip);
+	if ( false == get_ip_after_resolving_domain( ip ) )
+	{
+		return false;
+	}
 
-	SOCKET sock = connect_to_host(ip);
-	if (INVALID_SOCKET == sock)
+	SOCKET sock = connect_to_host( ip );
+	if ( INVALID_SOCKET == sock )
 	{
 		return false;
 	}
 
 	// for testing....
-	char send_buffer[1024]{"zz test\r\n"};
-	send(sock, send_buffer, 1024, NULL);
+	char send_buffer[1024]{ "GET / HTTP/1.1\r\nHost: www.google.com\r\nConnection: keep-alive\r\n\r\nUser-Agent: charg2\r\n\r\n" };
+
+
+	send( sock, send_buffer, strlen( send_buffer ), NULL );
 
 	char recv_buffer[1024]{};
-	recv(sock, recv_buffer, 1024, NULL);
+	recv( sock, recv_buffer, 1024, NULL );
 
-	//send_to_host();
-	//recv_from_host();
+	closesocket( sock );
 
 	return true;
 }
 
-bool c2::net::http_client::do_request_post(const http_post_context& context)
+bool c2::net::http_client::do_request_post( const http_post_context& context )
 {
 	return false;
 }
 
-SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip)
+c2::net::e_http_client_error c2::net::http_client::get_last_error()
 {
-	SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (sock == INVALID_SOCKET)
+	return e_http_client_error();
+}
+
+SOCKET c2::net::http_client::connect_to_host( const std::wstring& ip )
+{
+	SOCKET sock = socket( AF_INET, SOCK_STREAM, IPPROTO_TCP );
+	if ( sock == INVALID_SOCKET )
 	{
 		return INVALID_SOCKET;
 	}
@@ -69,34 +77,34 @@ SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip)
 	// bind address
 	SOCKADDR_IN sock_addr{};
 	sock_addr.sin_family = AF_INET;
-	sock_addr.sin_port = htons(this->port);
-	InetPtonW(AF_INET, ip.c_str(), &sock_addr.sin_addr);
+	sock_addr.sin_port = htons( this->port );
+	InetPtonW( AF_INET, ip.c_str(), &sock_addr.sin_addr );
 
 
 	// non-blocking 소켓으로 변경.
 	unsigned long enable_non_bloking_mode = true;
-	if (SOCKET_ERROR != ioctlsocket(sock, FIONBIO, &enable_non_bloking_mode))
+	if ( SOCKET_ERROR != ioctlsocket( sock, FIONBIO, &enable_non_bloking_mode ) )
 	{
 		size_t err_code = WSAGetLastError();
-		printf("ioctlsocket failed with error: %ld\n", err_code);
+		printf( "ioctlsocket failed with error: %ld\n", err_code );
 	}
 
 	// 이건 옵션의 여지로?
 	int disable_nagle = true;
-	if (SOCKET_ERROR == setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (const char*)&disable_nagle, sizeof(char)))
+	if ( SOCKET_ERROR == setsockopt( sock, IPPROTO_TCP, TCP_NODELAY, ( const char* )&disable_nagle, sizeof( char ) ) )
 	{
 		size_t err_code = WSAGetLastError();
-		printf("ioctlsocket failed with error: %ld\n", err_code);
+		printf( "ioctlsocket failed with error: %ld\n", err_code );
 
 		return INVALID_SOCKET;
 	}
 
 	// trying connect non-blocking socket
-	int ret_val = ::connect(sock, (sockaddr*)&sock_addr, sizeof(SOCKADDR_IN));
-	if (SOCKET_ERROR == ret_val)
+	int ret_val = ::connect( sock, ( sockaddr* )&sock_addr, sizeof( SOCKADDR_IN ) );
+	if ( SOCKET_ERROR == ret_val )
 	{
 		int ret = WSAGetLastError();
-		switch (ret)
+		switch ( ret )
 		{
 			case WSAEISCONN: // 이미 연결된 소켓.
 			{
@@ -108,8 +116,8 @@ SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip)
 				fd_set except_set{ 1, {sock} };
 				timeval time_val{ 3, 0 }; // 3초 대기
 
-				select(0, 0, &write_set, &except_set, &time_val);
-				if (write_set.fd_count == 0)
+				select( 0, 0, &write_set, &except_set, &time_val );
+				if ( write_set.fd_count == 0 )
 				{
 					return INVALID_SOCKET;
 				}
@@ -119,7 +127,7 @@ SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip)
 			default:
 			{
 				size_t err_code = WSAGetLastError();
-				printf("ioctlsocket failed with error: %ld\n", err_code);
+				printf( "ioctlsocket failed with error: %ld\n", err_code );
 				return INVALID_SOCKET;
 			}
 		}
@@ -129,9 +137,9 @@ SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip)
 	// 다시 blocking socket 로 변경
 	// blocking send recv 를 위해 
 	enable_non_bloking_mode = false;
-	if (SOCKET_ERROR == ioctlsocket(sock, FIONBIO, &enable_non_bloking_mode))
+	if ( SOCKET_ERROR == ioctlsocket( sock, FIONBIO, &enable_non_bloking_mode ) )
 	{
-		closesocket(sock);
+		closesocket( sock );
 
 		return INVALID_SOCKET;
 	}
@@ -139,33 +147,53 @@ SOCKET c2::net::http_client::connect_to_host(const std::wstring& ip)
 
 	// time wait 없애기.
 	LINGER linger_opt{ 1, 0 };
-	if (SOCKET_ERROR == setsockopt(sock, SOL_SOCKET, SO_LINGER, (char*)&linger_opt, sizeof(linger_opt)))
+	if ( SOCKET_ERROR == setsockopt( sock, SOL_SOCKET, SO_LINGER, ( char* )&linger_opt, sizeof( linger_opt ) ) )
 	{
-		closesocket(sock);
+		closesocket( sock );
 		return INVALID_SOCKET;
 	}
 
 	return sock;
 }
 
-bool c2::net::http_client::resolve_domain(std::wstring& ip)
+std::string c2::net::http_client::encode_utf16_to_utf8( const std::wstring& msg )
+{
+	std::u16string msg16( ( const char16_t* )msg.data(), msg.size() );
+
+	std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
+	std::string dest = convert.to_bytes( msg16 );
+
+	return std::move( dest );
+}
+
+std::wstring c2::net::http_client::encode_utf8_to_utf16( const std::string& msg )
+{
+	std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
+	std::u16string dest = convert.from_bytes( msg );
+
+	std::wstring msg_w{ ( wchar_t* )dest.c_str(), dest.size() };
+
+	return size_t();
+}
+
+bool c2::net::http_client::get_ip_after_resolving_domain( std::wstring& ip )
 {
 	addrinfoW hints{ AI_CANONNAME, PF_UNSPEC, SOCK_STREAM };
 	addrinfoW* result{};
 
-	int errcode = GetAddrInfoW(host.c_str(), NULL, &hints, &result);
-	if (errcode != 0)
+	int errcode = GetAddrInfoW( host.c_str(), NULL, &hints, &result );
+	if ( errcode != 0 )
 	{
 		return false;
 	}
-	
+
 	void* ptr{};
-	addrinfoW* addr_info{result};
+	addrinfoW* addr_info{ result };
 
 
-	while (nullptr != addr_info)// && result->ai_family != AF_INET)
+	while ( nullptr != addr_info )// && result->ai_family != AF_INET)
 	{
-		if (AF_INET == addr_info->ai_family)
+		if ( AF_INET == addr_info->ai_family )
 		{
 			break;
 		}
@@ -173,58 +201,58 @@ bool c2::net::http_client::resolve_domain(std::wstring& ip)
 		addr_info = addr_info->ai_next;
 	}
 
-	if (AF_INET6 == addr_info->ai_family || nullptr == addr_info)
+	if ( AF_INET6 == addr_info->ai_family || nullptr == addr_info )
 	{
 		return false;
 	}
 
-	switch (addr_info->ai_family)
+	switch ( addr_info->ai_family )
 	{
-	case AF_INET:
-		ptr = &((struct sockaddr_in*)addr_info->ai_addr)->sin_addr;
-		break;
-	case AF_INET6:
-		ptr = &((struct sockaddr_in6*)addr_info->ai_addr)->sin6_addr;
-		break;
-	default:
-		return false;
+		case AF_INET:
+			ptr = &(( struct sockaddr_in* )addr_info->ai_addr)->sin_addr;
+			break;
+		case AF_INET6:
+			ptr = &(( struct sockaddr_in6* )addr_info->ai_addr)->sin6_addr;
+			break;
+		default:
+			return false;
 	}
 
 	wchar_t buffer[1024]{};
-	InetNtopW(addr_info->ai_family, ptr, buffer, sizeof(buffer) / sizeof(wchar_t));
+	InetNtopW( addr_info->ai_family, ptr, buffer, sizeof( buffer ) / sizeof( wchar_t ) );
 
 	ip = buffer;
 
-	FreeAddrInfoW(result);
+	FreeAddrInfoW( result );
 
 	return true;
 }
 
 
-bool c2::net::http_client::parse_url(const std::wstring& url)
+bool c2::net::http_client::parse_url( const std::wstring& url )
 {
-	constexpr std::wstring_view PROTOCOL_HTTPS	{ L"https://" };
-	constexpr std::wstring_view PROTOCOL_HTTP	{ L"http://" };
+	constexpr std::wstring_view PROTOCOL_HTTPS{ L"https://" };
+	constexpr std::wstring_view PROTOCOL_HTTP{ L"http://" };
 
-	uint16_t port		{ HTTP_WELL_KNOWN_PORT };
-	uint16_t protocol	{ HTTP_WELL_KNOWN_PORT };
+	uint16_t port{ HTTP_WELL_KNOWN_PORT };
+	uint16_t protocol{ HTTP_WELL_KNOWN_PORT };
 	std::wstring_view url_str{ url };
 
-	size_t pos = url_str.find(PROTOCOL_HTTPS); // 443
-	if (std::wstring_view::npos != pos)
+	size_t pos = url_str.find( PROTOCOL_HTTPS ); // 443
+	if ( std::wstring_view::npos != pos )
 	{
 		port = HTTPS_WELL_KNOWN_PORT;
 
-		url_str.remove_prefix(PROTOCOL_HTTPS.length());
+		url_str.remove_prefix( PROTOCOL_HTTPS.length() );
 	}
 	else
 	{
-		pos = url_str.find(PROTOCOL_HTTP); // 443
-		if (std::wstring_view::npos != pos)
+		pos = url_str.find( PROTOCOL_HTTP ); // 443
+		if ( std::wstring_view::npos != pos )
 		{
 			port = HTTP_WELL_KNOWN_PORT;
 
-			url_str.remove_prefix(PROTOCOL_HTTP.length());
+			url_str.remove_prefix( PROTOCOL_HTTP.length() );
 		}
 	}
 
@@ -234,25 +262,25 @@ bool c2::net::http_client::parse_url(const std::wstring& url)
 	// :가 없으면 포트 그대로...
 	// :가 있으면 포트 변경 + 1부터 끝가지 (이미 /로 끝을낸 substr)
 	// / 없으면 끝.
-	size_t server_name_end_pos = url_str.find(L"/");
+	size_t server_name_end_pos = url_str.find( L"/" );
 	std::wstring_view host;
 	std::wstring_view path;
-	if (std::wstring_view::npos == server_name_end_pos) // / 없으면 끝.
+	if ( std::wstring_view::npos == server_name_end_pos ) // / 없으면 끝.
 	{
 		host = url_str;
 	}
 	else
 	{
-		path = url_str.substr(server_name_end_pos + 1);
-		url_str.remove_suffix(url_str.size() - server_name_end_pos);
+		path = url_str.substr( server_name_end_pos + 1 );
+		url_str.remove_suffix( url_str.size() - server_name_end_pos );
 		host = url_str;//.substr(0, server_name_end_pos);
 	}
 
 	this->path = path;
 
 	//// : 포트가 있는지...
-	size_t port_identifire_pos = host.find(L":");
-	if (std::wstring_view::npos == port_identifire_pos) // 없다면... PASS // 있다면 처리.
+	size_t port_identifire_pos = host.find( L":" );
+	if ( std::wstring_view::npos == port_identifire_pos ) // 없다면... PASS // 있다면 처리.
 	{
 		this->host = host;
 		this->port = port;
@@ -261,9 +289,9 @@ bool c2::net::http_client::parse_url(const std::wstring& url)
 	}
 
 
-	std::wstring port_str(&host.data()[port_identifire_pos + 1], host.size() - port_identifire_pos - 1);
-	this->port = std::stoi(port_str);
-	host.remove_suffix(port_str.size());
+	std::wstring port_str( &host.data()[port_identifire_pos + 1], host.size() - port_identifire_pos - 1 );
+	this->port = std::stoi( port_str );
+	host.remove_suffix( port_str.size() );
 
 	this->host = host;
 

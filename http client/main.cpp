@@ -10,16 +10,14 @@ auto main() -> int
 		Host : naver.com
 	*/
 
-	//std::wstring url{ L"http://naver.com/" };
-	std::wstring url{ L"https://search.naver.com/search.naver?where=nexearch&sm=top_hty&fbm=1&ie=utf8&query=%ED%9C%B4%EC%9D%BC" };
+	std::wstring url{ L"http://google.com/" };
+	std::wstring get_message{ L"GET / HTTP / 1.1\r\nHost: www.google.com\r\nConnection: keep - alive\r\n\r\nUser - Agent: charg2\r\n\r\n" };
 
-	// parse
-	c2::net::http_client client(url);
+	c2::net::http_get_context context{ url, std::move(get_message) };
 
-	c2::net::http_get_context context;
-	context.url = url;
+	c2::net::http_client client{ url };
 
-	client.do_request_get(context);
+	client.do_request_get( context );
 
 
 	return 0;
